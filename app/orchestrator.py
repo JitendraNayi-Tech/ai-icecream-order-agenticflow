@@ -6,7 +6,7 @@ import time
 
 import anthropic
 
-from app import claude_code, config, fastpath, llm, routing
+from app import claude_code, config, fastpath, llm, routing, usage
 from app.agents import AGENTS
 from app.agents.base import AgentContext
 from app.agents.tracker import OrderTracker, eta_minutes, status_line
@@ -66,9 +66,10 @@ class Orchestrator:
                     merged = "\n".join(texts)
                     session.add_message("user", merged)
                     agent = await self.pick_agent(session, merged)
+                    scope = self._order_scope(session)  # before the step can end the order
                     reply = fastpath.try_handle(agent, self._ctx(session), merged)
                     if reply is not None:
-                        await self._say_fast(session, agent, reply)
+                        await self._say_fast(session, agent, reply, order_scope=scope)
                     else:
                         await self._run_agent(session, agent)
         finally:
@@ -79,11 +80,15 @@ class Orchestrator:
         if agent:
             log.info("route -> %s (rule)", agent)
             return agent
+        token = usage.current_call.set((session.customer_id, "router",
+                                        self._order_scope(session)))
         try:
             route = await llm.route(self._transcript(session), self._state(session))
         except Exception:
             log.exception("router failed")
             return "followup" if session.feedback_order_id else "intake"
+        finally:
+            usage.current_call.reset(token)
         log.info("route -> %s (%s)", route.agent, route.reason)
         return route.agent
 
@@ -92,12 +97,62 @@ class Orchestrator:
     def _ctx(self, session: Session) -> AgentContext:
         return AgentContext(store=self.store, session=session, services=self)
 
-    async def _say_fast(self, session: Session, agent: str, text: str) -> None:
+    @staticmethod
+    def _order_scope(session: Session) -> str | None:
+        """The order a step belongs to, if any: in progress, or delivered awaiting feedback."""
+        return session.active_order_id or session.feedback_order_id
+
+    async def _say_fast(self, session: Session, agent: str, text: str, *,
+                        order_scope: str | None = None) -> None:
         """Send a deterministic (no-LLM) reply on behalf of an agent."""
         log.info("agent %s replied via fast path (no LLM)", agent)
+        usage.record_code(session.customer_id, agent, order_scope or self._order_scope(session))
         session.last_agent = agent
         await session.say(AGENTS[agent].label, text)
+        await self._emit_side_panels(session)
+
+    async def _emit_side_panels(self, session: Session) -> None:
+        """After every reply: refresh the cart panel and the cost panel."""
         await session.emit({"type": "cart", "items": session.cart_view(self.store)})
+        if session.active_order_id:
+            # Steps taken before the order existed (building the cart) belong to it.
+            usage.tag_untagged(session.customer_id, session.active_order_id)
+        await session.emit({"type": "usage", **self.usage_panel(session)})
+
+    def usage_panel(self, session: Session) -> dict:
+        """Cost panel data: the current order (value vs AI cost) plus earlier orders."""
+        groups: dict[str | None, list] = {}
+        for r in usage.records_for(session.customer_id):
+            groups.setdefault(r.order_id, []).append(r)
+
+        def entry(order_id: str | None, records: list) -> dict:
+            order = self.store.orders.get(order_id or "")
+            if order:
+                value = {"subtotal": order.subtotal, "discount": order.discount,
+                         "total": order.total, "status": order.status.value}
+            elif session.cart:  # not placed yet: price the cart as it stands
+                q = self.store.quote(session.cart, session.customer_id, session.promo_code)
+                value = {"subtotal": q.subtotal, "discount": q.discount, "total": q.total,
+                         "status": "IN CART"}
+            else:
+                value = {"subtotal": 0, "discount": 0, "total": 0, "status": "NOT STARTED"}
+            costs = usage.cost_breakdown(records)
+            for row in costs["by_agent"]:
+                row["label"] = AGENTS[row["agent"]].label if row["agent"] in AGENTS else "Router"
+            share = costs["ai_cost_usd"] / value["total"] * 100 if value["total"] else None
+            return {"order_id": order_id, **value, **costs, "ai_share_pct": share}
+
+        if None in groups or session.cart or not groups:
+            current = entry(None, groups.get(None, []))
+        else:
+            latest = max(groups[k][-1].at for k in groups)
+            current_id = next(k for k in groups if groups[k][-1].at == latest)
+            current = entry(current_id, groups[current_id])
+        history = [entry(k, v) for k, v in reversed(groups.items())
+                   if k is not None and k != current["order_id"]]
+        return {"current": current, "history": [
+            {"order_id": h["order_id"], "total": h["total"], "ai_cost_usd": h["ai_cost_usd"],
+             "ai_share_pct": h["ai_share_pct"], "claude_runs": h["claude_runs"]} for h in history]}
 
     def build_prompt(self, session: Session, name: str) -> tuple[str, str]:
         """Return (system, volatile) for one agent run, laid out for prompt caching.
@@ -131,6 +186,7 @@ class Orchestrator:
         if event:
             # System events (e.g. "order delivered") are shown to the agent but not stored.
             messages.append({"role": "user", "content": event})
+        token = usage.current_call.set((session.customer_id, name, self._order_scope(session)))
         try:
             text = await llm.run_agent(system, spec.make_tools(ctx), messages, spec.effort,
                                        agent=name, customer_id=session.customer_id,
@@ -158,10 +214,12 @@ class Orchestrator:
         except Exception:  # never leave the chat hanging on "typing"
             log.exception("agent %s crashed", name)
             text = "Something went wrong on our side. Please try again."
+        finally:
+            usage.current_call.reset(token)
         log.info("agent %s replied in %.1fs", name, time.monotonic() - started)
         session.last_agent = name
         await session.say(spec.label, text)
-        await session.emit({"type": "cart", "items": session.cart_view(self.store)})
+        await self._emit_side_panels(session)
 
     async def _on_status(self, order: Order) -> None:
         """Called by OrderTracker on every status change: push a live update to the chat."""
@@ -171,6 +229,7 @@ class Orchestrator:
         await session.emit({"type": "status", "order_id": order.id, "status": order.status.value,
                             "eta_minutes": eta_minutes(order)})
         await session.say(TRACKER_LABEL, status_line(order))
+        await self._emit_side_panels(session)
         if order.status == OrderStatus.DELIVERED:
             if session.active_order_id == order.id:
                 session.active_order_id = None

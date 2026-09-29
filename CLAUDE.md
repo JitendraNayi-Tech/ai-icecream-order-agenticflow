@@ -28,7 +28,11 @@ The five agents are Order Intake, Flavor Recommender, Checkout & Pricing, Order 
 - **Shared history:** `Session.history` is one text-only history per customer, shared by every agent. Tool-call turns never go into it. `add_message` merges consecutive same-role turns so roles alternate. Synthetic events (greeting, "order delivered") are passed to the agent as extra user turns and are not stored.
 - **Live tracking:** `OrderTracker` (`agents/tracker.py`) runs one asyncio task per order and walks through `STATUS_FLOW` using `config.STATUS_DELAYS`. On each change it calls `Orchestrator._on_status`, which pushes a `status` frame and a chat line. At DELIVERED it sets `session.feedback_order_id` and starts the Follow-up agent in the background.
 - **Checkout safety:** `place_order` refuses unless the price was shown (`quoted_turn`) on an earlier customer turn. Any cart or promo change resets `quoted_turn`.
-- **WS frame types:** `message`, `typing`, `status`, `cart`. They are handled in `static/index.html`.
+- **WS frame types:** `message`, `typing`, `status`, `cart`, `usage`. They are handled in `static/index.html`, whose 3-column layout is: cost panel | chat | cart and order.
+- **Cost tracking (`app/usage.py`):** a process-global ledger of every Claude run, with tokens and the API-equivalent `costUSD` the CLI reports (priced from `API_PRICES` on the API backend), plus every fast-path step (model `"code"`, $0).
+  - The orchestrator sets `usage.current_call = (customer, agent, order_in_scope)` when a step starts. Capturing the order in scope *before* the step matters: a step can end the order, as recording feedback clears `feedback_order_id`.
+  - Records made before an order exists are attributed to it once it's placed (`tag_untagged`).
+  - `Orchestrator.usage_panel()` builds the panel data, also served at `/api/usage/{customer_id}`. `tests/conftest.py` clears the ledger between tests.
 - **Routing:** `Orchestrator.pick_agent` tries `routing.quick_route` first (rules: an open question from intake/checkout/followup keeps the next message, "yes" after a price goes to checkout, keywords). It calls the LLM router only when no rule matches, which saves a whole Claude call on most turns.
 - **Busy turns:** messages sent while an agent is working queue in `Session.pending`. The `handle` loop (guarded by `session.draining`) merges them into one customer turn once the current reply is done.
 - **Prompt layout (prompt caching):** `Orchestrator.build_prompt` returns `(system, volatile)`.

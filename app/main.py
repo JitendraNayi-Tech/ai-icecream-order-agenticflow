@@ -36,6 +36,12 @@ async def customers() -> list[dict]:
     return [c.model_dump() for c in store.customers.values()]
 
 
+@app.get("/api/usage/{customer_id}")
+async def usage_panel(customer_id: str) -> dict:
+    """Same data as the cost panel: current order value vs AI cost, plus earlier orders."""
+    return orchestrator.usage_panel(orchestrator.session(customer_id))
+
+
 @app.websocket("/ws/{customer_id}")
 async def chat(ws: WebSocket, customer_id: str) -> None:
     await ws.accept()
@@ -53,6 +59,8 @@ async def chat(ws: WebSocket, customer_id: str) -> None:
         if not m["content"].startswith("[The customer just opened"):
             await ws.send_json({"type": "message", "agent": "You" if m["role"] == "user" else "Shop",
                                 "text": m["content"]})
+
+    await ws.send_json({"type": "usage", **orchestrator.usage_panel(session)})
 
     async def writer() -> None:
         while True:

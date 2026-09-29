@@ -11,7 +11,7 @@
   body { margin:0; font:15px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
   header { display:flex; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--panel); }
   header h1 { font-size:17px; margin:0; flex:1; }
-  main { display:grid; grid-template-columns: 1fr 280px; height: calc(100vh - 57px); }
+  main { display:grid; grid-template-columns: 300px 1fr 280px; height: calc(100vh - 57px); }
   #chat { display:flex; flex-direction:column; min-height:0; }
   #log { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }
   .msg { max-width:75%; padding:8px 12px; border-radius:12px; background:var(--panel); border:1px solid var(--line); white-space:pre-wrap; }
@@ -30,6 +30,19 @@
   .steps li.done { color:var(--ink); }
   .steps li.done::before { background:var(--accent); border-color:var(--accent); }
   .cart-line { font-size:13px; padding:4px 0; border-bottom:1px dashed var(--line); }
+  /* Cost panel (left) */
+  aside#costs { border-left:0; border-right:1px solid var(--line); }
+  .kv { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+  .kv td { padding:3px 0; }
+  .kv td:last-child { text-align:right; }
+  .kv tr.total td { font-weight:700; border-top:1px solid var(--line); padding-top:6px; }
+  .kv th { font-size:11px; font-weight:600; color:var(--muted); text-align:right; padding:0 0 4px; }
+  .kv th:first-child { text-align:left; }
+  .kv td.code { color:var(--muted); font-style:italic; }
+  .badge { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.04em; padding:1px 6px;
+           border-radius:9px; background:var(--you); color:var(--accent); vertical-align:middle; }
+  .note { font-size:11px; color:var(--muted); margin-top:6px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr 280px; } aside#costs { display:none; } }
   @media (max-width: 720px) { main { grid-template-columns: 1fr; } aside { display:none; } }
 </style>
 </head>
@@ -39,6 +52,22 @@
   <label>Customer <select id="customer"></select></label>
 </header>
 <main>
+  <aside id="costs">
+    <section><h2>Order cost <span id="cost-order"></span></h2>
+      <table class="kv" id="cost-order-table"></table>
+    </section>
+    <section><h2>AI cost</h2>
+      <table class="kv" id="cost-ai-table"></table>
+    </section>
+    <section><h2>By agent</h2>
+      <table class="kv" id="cost-agents"></table>
+    </section>
+    <section id="cost-history-section" hidden><h2>Earlier orders</h2>
+      <table class="kv" id="cost-history"></table>
+    </section>
+    <div class="note">AI cost = API-equivalent price reported per Claude call.
+      "code" = step handled without Claude ($0).</div>
+  </aside>
   <div id="chat">
     <div id="log"></div>
     <form id="form"><input id="text" type="text" placeholder="e.g. what should I get today?" autocomplete="off"><button>Send</button></form>
@@ -75,6 +104,36 @@ function addMessage(who, text, you) {
 
 function clearTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
 
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const usd = (n, d = 2) => `$${Number(n).toFixed(d)}`;
+const pct = (n) => n == null ? "–" : `${n.toFixed(2)}%`;
+
+function renderUsage(u) {
+  const c = u.current;
+  $("cost-order").innerHTML = c.order_id
+    ? `${esc(c.order_id)} <span class="badge">${esc(c.status.replaceAll("_", " "))}</span>`
+    : `<span class="badge">${esc(c.status.replaceAll("_", " "))}</span>`;
+  $("cost-order-table").innerHTML = `
+    <tr><td>Subtotal</td><td>${usd(c.subtotal)}</td></tr>
+    <tr><td>Discount</td><td>-${usd(c.discount)}</td></tr>
+    <tr class="total"><td>Order total</td><td>${usd(c.total)}</td></tr>`;
+  $("cost-ai-table").innerHTML = `
+    <tr><td>Claude calls</td><td>${c.claude_runs}</td></tr>
+    <tr><td>Tokens in / out</td><td>${(c.input_tokens + c.cache_read_tokens + c.cache_write_tokens).toLocaleString()} / ${c.output_tokens.toLocaleString()}</td></tr>
+    <tr><td>Cache read / write</td><td>${c.cache_read_tokens.toLocaleString()} / ${c.cache_write_tokens.toLocaleString()}</td></tr>
+    <tr class="total"><td>AI cost</td><td>${usd(c.ai_cost_usd, 4)}</td></tr>
+    <tr><td>AI share of order</td><td>${pct(c.ai_share_pct)}</td></tr>`;
+  $("cost-agents").innerHTML = `<tr><th>Agent</th><th>Runs</th><th>Cost</th></tr>` +
+    (c.by_agent.length ? c.by_agent.map((a) => a.runs
+      ? `<tr><td>${esc(a.label)}</td><td>${a.runs}</td><td>${usd(a.cost_usd, 4)}</td></tr>`
+      : `<tr><td>${esc(a.label)}</td><td class="code">code</td><td>${usd(0, 4)}</td></tr>`).join("")
+      : `<tr><td colspan="3" class="code">No activity yet</td></tr>`);
+  $("cost-history-section").hidden = !u.history.length;
+  $("cost-history").innerHTML = `<tr><th>Order</th><th>Total</th><th>AI cost</th></tr>` +
+    u.history.map((h) => `<tr><td>${esc(h.order_id)}</td><td>${usd(h.total)}</td>
+      <td>${usd(h.ai_cost_usd, 4)} <span class="note">(${pct(h.ai_share_pct)})</span></td></tr>`).join("");
+}
+
 function connect(customerId) {
   if (ws) ws.close();
   $("log").innerHTML = ""; $("cart").innerHTML = "<em>Empty</em>";
@@ -103,7 +162,7 @@ function connect(customerId) {
         d.textContent = `#${it.line_id} ${it.quantity}× ${it.description} ($${it.unit_price.toFixed(2)})`;
         $("cart").appendChild(d);
       }
-    }
+    } else if (f.type === "usage") renderUsage(f);
   };
 }
 

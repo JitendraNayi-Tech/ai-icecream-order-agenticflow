@@ -5,7 +5,7 @@ import logging
 
 import anthropic
 
-from app import claude_code, config
+from app import claude_code, config, usage
 from app.models import Route
 
 log = logging.getLogger(__name__)
@@ -66,7 +66,11 @@ async def run_agent(system: str, tools: list, messages: list[dict], effort: str,
         betas=[FALLBACK_BETA],
         fallbacks="default",
     )
-    final = await runner.until_done()
+    final, usages = None, []
+    async for message in runner:  # one message per step of the tool loop
+        usages.append(message.usage)
+        final = message
+    usage.record_api(config.MODEL, usages)
     return _final_text(final)
 
 
@@ -93,6 +97,7 @@ async def route(transcript: str, state: str) -> Route:
         output_format=Route,
         output_config={"effort": "low"},
     )
+    usage.record_api(config.MODEL, [response.usage])
     if response.stop_reason == "refusal" or response.parsed_output is None:
         return Route(agent="intake", reason="router fallback")
     return response.parsed_output

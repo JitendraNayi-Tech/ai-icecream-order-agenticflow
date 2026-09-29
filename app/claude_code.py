@@ -17,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from app import config
+from app import config, usage
 
 AGENT_NAMES = ("intake", "recommender", "checkout", "tracker", "followup")
 
@@ -70,6 +70,7 @@ def _run(args: list[str], prompt: str) -> dict:
         raise ClaudeCodeError(f"claude exited {proc.returncode}: {(proc.stderr or proc.stdout)[:500]}")
     if data.get("is_error"):
         raise ClaudeCodeError(f"claude error: {data.get('result') or data.get('subtype')}")
+    usage.record_claude_code(data)  # tokens + API-equivalent cost for the cost panel
     return data
 
 
