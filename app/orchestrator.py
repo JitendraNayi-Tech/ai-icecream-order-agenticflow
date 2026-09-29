@@ -52,6 +52,7 @@ class Orchestrator:
             await self._say_fast(session, "recommender", fastpath.greeting(self._ctx(session)))
 
     async def handle(self, session: Session, text: str) -> None:
+        session.transcript.append({"type": "message", "agent": "You", "text": text})
         session.pending.append(text)
         if session.draining:
             return  # the loop below is already running and will pick this message up
@@ -226,8 +227,9 @@ class Orchestrator:
         session = self._order_sessions.get(order.id)
         if session is None:
             return
-        await session.emit({"type": "status", "order_id": order.id, "status": order.status.value,
-                            "eta_minutes": eta_minutes(order)})
+        session.last_status = {"type": "status", "order_id": order.id,
+                               "status": order.status.value, "eta_minutes": eta_minutes(order)}
+        await session.emit(session.last_status)
         await session.say(TRACKER_LABEL, status_line(order))
         await self._emit_side_panels(session)
         if order.status == OrderStatus.DELIVERED:

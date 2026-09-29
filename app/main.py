@@ -51,15 +51,16 @@ async def chat(ws: WebSocket, customer_id: str) -> None:
         await ws.close(code=4404, reason="unknown customer")
         return
 
-    # Replay history so a reconnect (page refresh) shows the conversation so far; frames
-    # queued while disconnected are already part of that history.
+    # Replay what the chat showed so a reconnect (page refresh) looks the same: messages with
+    # their agent labels, the order progress, the cart and the cost panel. Frames queued
+    # while disconnected are already part of this state.
     while not session.outbox.empty():
         session.outbox.get_nowait()
-    for m in session.history:
-        if not m["content"].startswith("[The customer just opened"):
-            await ws.send_json({"type": "message", "agent": "You" if m["role"] == "user" else "Shop",
-                                "text": m["content"]})
-
+    for frame in session.transcript:
+        await ws.send_json(frame)
+    if session.last_status:
+        await ws.send_json(session.last_status)
+    await ws.send_json({"type": "cart", "items": session.cart_view(store)})
     await ws.send_json({"type": "usage", **orchestrator.usage_panel(session)})
 
     async def writer() -> None:

@@ -24,6 +24,10 @@ class Session:
     # Customer messages that arrived while an agent was busy; answered together in one turn.
     pending: list[str] = field(default_factory=list)
     draining: bool = False  # True while Orchestrator.handle is working through `pending`
+    # What the chat UI shows, replayed when a page (re)connects: message frames with their
+    # agent labels (history only keeps roles), and the latest order status frame.
+    transcript: list[dict] = field(default_factory=list)
+    last_status: dict | None = None
     # Frames destined for the websocket: {"type": "message"|"status"|"typing"|"cart", ...}
     outbox: asyncio.Queue = field(default_factory=asyncio.Queue)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -43,7 +47,9 @@ class Session:
     async def say(self, agent: str, text: str) -> None:
         """Send an agent message to the customer and record it in the shared history."""
         self.add_message("assistant", text)
-        await self.emit({"type": "message", "agent": agent, "text": text})
+        frame = {"type": "message", "agent": agent, "text": text}
+        self.transcript.append(frame)
+        await self.emit(frame)
 
     # ---------- cart ----------
 

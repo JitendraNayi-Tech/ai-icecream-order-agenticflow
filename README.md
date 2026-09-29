@@ -16,6 +16,27 @@ suggest flavors, check out, send live delivery updates, and follow up after deli
 An orchestrator routes every customer message to one agent using a small Claude
 structured-output call.
 
+## Screenshots
+
+The chat is in the middle. The left panel shows **order value vs AI cost**, live; the right
+panel shows the cart and order progress. Open a specific customer with `http://localhost:8000/#pavani`.
+
+**1. Order in progress:** Order Intake understood "2 cups, 2 scoops each"; the price summary
+comes from code (no Claude call).
+![Order in progress](docs/screenshots/01-order-in-progress.png)
+
+**2. Delivered:** live status updates, the rating request and a 5★ thank-you, with the final AI
+cost at 0.15% of the order.
+![Delivered order with AI cost](docs/screenshots/02-delivered-with-ai-cost.png)
+
+**3. Personalised and safe:** Pavani is dairy-free, so the recommender suggests only sorbets.
+The whole prompt was read from the prompt cache (2,580 read / 0 written).
+![Dairy-free recommendation](docs/screenshots/03-dairy-free-recommendation.png)
+
+**4. Next order:** the new cart is costed separately; the finished order moves to
+"Earlier orders".
+![Second order with earlier orders](docs/screenshots/04-second-order-earlier-orders.png)
+
 ## Run
 
 ```bash

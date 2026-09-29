@@ -115,7 +115,7 @@ function renderUsage(u) {
     : `<span class="badge">${esc(c.status.replaceAll("_", " "))}</span>`;
   $("cost-order-table").innerHTML = `
     <tr><td>Subtotal</td><td>${usd(c.subtotal)}</td></tr>
-    <tr><td>Discount</td><td>-${usd(c.discount)}</td></tr>
+    <tr><td>Discount</td><td>${c.discount ? "-" + usd(c.discount) : usd(0)}</td></tr>
     <tr class="total"><td>Order total</td><td>${usd(c.total)}</td></tr>`;
   $("cost-ai-table").innerHTML = `
     <tr><td>Claude calls</td><td>${c.claude_runs}</td></tr>
@@ -178,8 +178,12 @@ $("form").onsubmit = (e) => {
 fetch("/api/customers").then(r => r.json()).then(list => {
   $("customer").innerHTML = list.map(c =>
     `<option value="${c.id}">${c.name} (${c.loyalty_tier})</option>`).join("");
-  $("customer").onchange = () => connect($("customer").value);
-  connect(list[0].id);
+  $("customer").onchange = () => { location.hash = $("customer").value; connect($("customer").value); };
+  // Deep link: /#pavani opens that customer's chat.
+  const wanted = location.hash.slice(1);
+  const start = list.some((c) => c.id === wanted) ? wanted : list[0].id;
+  $("customer").value = start;
+  connect(start);
 });
 renderSteps(null);
 </script>

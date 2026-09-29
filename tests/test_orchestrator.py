@@ -74,6 +74,15 @@ async def test_messages_sent_while_busy_are_merged_into_one_turn(calls, monkeypa
     assert s.turn == 2 and not s.pending and not s.draining
 
 
+async def test_transcript_keeps_agent_labels_for_replay(calls):
+    orch = Orchestrator(Store(), FAST)
+    s = orch.session("zarna")
+    await orch.greet(s)
+    calls["route_to"] = "intake"
+    await orch.handle(s, "one scoop of vanilla please")
+    assert [f["agent"] for f in s.transcript] == ["Flavor Recommender", "You", "Order Intake"]
+
+
 async def test_greet_runs_once_without_llm(calls):
     orch = Orchestrator(Store(), FAST)
     s = orch.session("dirgh")
