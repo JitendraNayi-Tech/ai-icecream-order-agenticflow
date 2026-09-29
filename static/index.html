@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scoops &amp; Co - Agentic Ordering</title>
+<style>
+  :root { --bg:#fdf8f3; --panel:#fff; --ink:#2b2320; --muted:#8a7d76; --line:#eee3da;
+          --accent:#d94f70; --you:#fde3ea; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { display:flex; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header h1 { font-size:17px; margin:0; flex:1; }
+  main { display:grid; grid-template-columns: 1fr 280px; height: calc(100vh - 57px); }
+  #chat { display:flex; flex-direction:column; min-height:0; }
+  #log { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:75%; padding:8px 12px; border-radius:12px; background:var(--panel); border:1px solid var(--line); white-space:pre-wrap; }
+  .msg.you { align-self:flex-end; background:var(--you); border-color:transparent; }
+  .who { font-size:11px; font-weight:600; color:var(--accent); text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; }
+  .typing { color:var(--muted); font-style:italic; font-size:13px; }
+  form { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--line); background:var(--panel); }
+  input[type=text] { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; cursor:pointer; }
+  aside { border-left:1px solid var(--line); background:var(--panel); padding:16px; overflow-y:auto; }
+  aside h2 { font-size:13px; text-transform:uppercase; color:var(--muted); margin:0 0 8px; letter-spacing:.05em; }
+  aside section { margin-bottom:24px; }
+  .steps { list-style:none; padding:0; margin:0; }
+  .steps li { padding:4px 0 4px 22px; position:relative; color:var(--muted); }
+  .steps li::before { content:""; position:absolute; left:4px; top:10px; width:9px; height:9px; border-radius:50%; border:2px solid var(--line); }
+  .steps li.done { color:var(--ink); }
+  .steps li.done::before { background:var(--accent); border-color:var(--accent); }
+  .cart-line { font-size:13px; padding:4px 0; border-bottom:1px dashed var(--line); }
+  @media (max-width: 720px) { main { grid-template-columns: 1fr; } aside { display:none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🍦 Scoops &amp; Co</h1>
+  <label>Customer <select id="customer"></select></label>
+</header>
+<main>
+  <div id="chat">
+    <div id="log"></div>
+    <form id="form"><input id="text" type="text" placeholder="e.g. what should I get today?" autocomplete="off"><button>Send</button></form>
+  </div>
+  <aside>
+    <section><h2>Cart</h2><div id="cart"><em>Empty</em></div></section>
+    <section><h2>Order <span id="order-id"></span></h2>
+      <ul class="steps" id="steps"></ul>
+      <div id="eta" class="typing"></div>
+    </section>
+  </aside>
+</main>
+<script>
+const STEPS = ["PLACED", "PREPARING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"];
+const $ = (id) => document.getElementById(id);
+let ws, typingEl;
+
+function renderSteps(status) {
+  const idx = STEPS.indexOf(status);
+  $("steps").innerHTML = STEPS.map((s, i) =>
+    `<li class="${i <= idx ? "done" : ""}">${s.replaceAll("_", " ").toLowerCase()}</li>`).join("");
+}
+
+function addMessage(who, text, you) {
+  clearTyping();
+  const el = document.createElement("div");
+  el.className = "msg" + (you ? " you" : "");
+  el.innerHTML = `<div class="who"></div><div class="body"></div>`;
+  el.querySelector(".who").textContent = who;
+  el.querySelector(".body").textContent = text;
+  $("log").appendChild(el);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+function clearTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
+
+function connect(customerId) {
+  if (ws) ws.close();
+  $("log").innerHTML = ""; $("cart").innerHTML = "<em>Empty</em>";
+  $("order-id").textContent = ""; $("eta").textContent = ""; renderSteps(null);
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws/${customerId}`);
+  ws.onmessage = (ev) => {
+    const f = JSON.parse(ev.data);
+    if (f.type === "message") addMessage(f.agent, f.text, f.agent === "You");
+    else if (f.type === "typing") {
+      clearTyping();
+      typingEl = document.createElement("div");
+      typingEl.className = "typing";
+      typingEl.textContent = `${f.agent} is typing…`;
+      $("log").appendChild(typingEl);
+    } else if (f.type === "status") {
+      $("order-id").textContent = f.order_id;
+      renderSteps(f.status);
+      $("eta").textContent = f.status === "DELIVERED" ? "Delivered" :
+        f.status === "CANCELLED" ? "Cancelled" : `ETA ~${f.eta_minutes} min`;
+    } else if (f.type === "cart") {
+      $("cart").innerHTML = f.items.length ? "" : "<em>Empty</em>";
+      for (const it of f.items) {
+        const d = document.createElement("div");
+        d.className = "cart-line";
+        d.textContent = `#${it.line_id} ${it.quantity}× ${it.description} ($${it.unit_price.toFixed(2)})`;
+        $("cart").appendChild(d);
+      }
+    }
+  };
+}
+
+$("form").onsubmit = (e) => {
+  e.preventDefault();
+  const text = $("text").value.trim();
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+  addMessage("You", text, true);
+  ws.send(JSON.stringify({ text }));
+  $("text").value = "";
+};
+
+fetch("/api/customers").then(r => r.json()).then(list => {
+  $("customer").innerHTML = list.map(c =>
+    `<option value="${c.id}">${c.name} (${c.loyalty_tier})</option>`).join("");
+  $("customer").onchange = () => connect($("customer").value);
+  connect(list[0].id);
+});
+renderSteps(null);
+</script>
+</body>
+</html>

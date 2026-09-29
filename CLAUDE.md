@@ -1,0 +1,35 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```bash
+.venv\Scripts\activate                    # venv lives in .venv
+pip install -r requirements.txt
+uvicorn app.main:app --reload             # http://localhost:8000
+pytest                                    # all tests; Claude is stubbed, no API key needed
+pytest tests/test_orchestrator.py::test_greet_runs_once   # a single test
+```
+
+Env: `LLM_BACKEND` (`claude_code` or `api`; defaults to `api` only when `ANTHROPIC_API_KEY` is set), `CLAUDE_CODE_MODEL` / `CLAUDE_CODE_ROUTER_MODEL` (default `sonnet` / `haiku`), `APP_URL` (default `http://127.0.0.1:8000`, must match the uvicorn port), `ICECREAM_MODEL` (API backend, default `claude-opus-5-5`), `TRACKER_SPEED` (multiplies status delays).
+
+## Architecture
+
+FastAPI + WebSocket chat POC where five Claude agents cooperate on one ice cream order.
+The five agents are Order Intake, Flavor Recommender, Checkout & Pricing, Order Tracker, and Follow-up & Feedback.
+
+- **Request path:** `main.py` handles WS `/ws/{customer_id}` and calls `Orchestrator.handle`. `llm.route` makes a structured-output call that returns a `Route` naming one agent. Then `llm.run_agent` runs that agent through the SDK beta tool runner. The reply goes into `Session.outbox`, and the WS writer task sends it.
+- **Only `app/llm.py` talks to Claude.** Tests monkeypatch `llm.route` and `llm.run_agent`. It dispatches on `config.LLM_BACKEND`:
+  - `api`: Anthropic SDK tool runner; needs an API key, pay-as-you-go.
+  - `claude_code` (`app/claude_code.py`): spawns one `claude -p` process per call, using the local Claude Code subscription login. Built-in CLI tools are disabled (`--tools ""`), and it runs in an empty temp cwd so this CLAUDE.md isn't loaded. The agent's tools reach it over MCP: `--mcp-config` points at this app's `/mcp/{customer_id}/{agent}`, served by `app/mcp_bridge.py`, a hand-rolled JSON-RPC endpoint. That endpoint calls the same `make_tools(ctx)` tool objects via `tool.call(args)`. So the agent code is backend-agnostic.
+- **Agents** live in `app/agents/*.py`. Each one exports `AGENT = AgentSpec(...)` (system prompt, effort, `make_tools`) and is registered in `app/agents/__init__.py`. `make_tools(ctx)` returns `@beta_async_tool` closures bound to an `AgentContext` (store, session, services), so Claude never passes customer ids. Tool bodies are wrapped in `guarded()`, which turns a `StoreError` into an `{"error": ...}` result for Claude.
+- **Business rules** (pricing, stock, promos, preferences) are plain methods on `app/store.py::Store` and are unit-tested directly. Keep that logic out of tool closures. If a rule inside a tool needs a test, pull it out into a function, as `checkout.confirm_and_place` does.
+- **Shared history:** `Session.history` is one text-only history per customer, shared by every agent. Tool-call turns never go into it. `add_message` merges consecutive same-role turns so roles alternate. Synthetic events (greeting, "order delivered") are passed to the agent as extra user turns and are not stored.
+- **Live tracking:** `OrderTracker` (`agents/tracker.py`) runs one asyncio task per order and walks through `STATUS_FLOW` using `config.STATUS_DELAYS`. On each change it calls `Orchestrator._on_status`, which pushes a `status` frame and a chat line. At DELIVERED it sets `session.feedback_order_id` and starts the Follow-up agent in the background.
+- **Checkout safety:** `place_order` refuses unless the price was shown (`quoted_turn`) on an earlier customer turn. Any cart or promo change resets `quoted_turn`.
+- **WS frame types:** `message`, `typing`, `status`, `cart`. They are handled in `static/index.html`.
+- **Routing:** `Orchestrator.pick_agent` tries `routing.quick_route` first (rules: an open question from intake/checkout/followup keeps the next message, "yes" after a price goes to checkout, keywords). It calls the LLM router only when no rule matches, which saves a whole Claude call on most turns.
+- **Busy turns:** messages sent while an agent is working queue in `Session.pending`. The `handle` loop (guarded by `session.draining`) merges them into one customer turn once the current reply is done.
+- **Agent context:** an optional `AgentSpec.context(ctx)` appends data (menu, cart, taste profile) to the system prompt each turn, so agents don't spend a tool round-trip fetching it. `Customer.notes` (e.g. dairy-free) is shown to every agent.
+- **Storage** is in memory only, seeded from `data/*.json`, and resets on restart. Seed orders omit prices; `Store.__init__` computes them from the pricing rules. New order ids continue after the highest seeded id.

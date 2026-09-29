@@ -1,0 +1,39 @@
+{
+  "flavors": [
+    {"id": "vanilla", "name": "Madagascar Vanilla", "price_per_scoop": 2.5, "tags": ["classic"], "stock_scoops": 80, "popularity": 90},
+    {"id": "chocolate", "name": "Belgian Chocolate", "price_per_scoop": 2.75, "tags": ["classic", "chocolate"], "stock_scoops": 70, "popularity": 95},
+    {"id": "strawberry", "name": "Strawberry Fields", "price_per_scoop": 2.75, "tags": ["fruity"], "stock_scoops": 40, "popularity": 70},
+    {"id": "mango", "name": "Alphonso Mango", "price_per_scoop": 3.0, "tags": ["fruity", "seasonal"], "stock_scoops": 30, "popularity": 80},
+    {"id": "pistachio", "name": "Sicilian Pistachio", "price_per_scoop": 3.25, "tags": ["nutty", "premium"], "stock_scoops": 25, "popularity": 60},
+    {"id": "cookies_cream", "name": "Cookies & Cream", "price_per_scoop": 3.0, "tags": ["chocolate", "crunchy"], "stock_scoops": 50, "popularity": 85},
+    {"id": "salted_caramel", "name": "Salted Caramel", "price_per_scoop": 3.0, "tags": ["sweet", "premium"], "stock_scoops": 35, "popularity": 75},
+    {"id": "mint_chip", "name": "Mint Chocolate Chip", "price_per_scoop": 2.75, "tags": ["chocolate", "fresh"], "stock_scoops": 0, "popularity": 65},
+    {"id": "coffee", "name": "Espresso Coffee", "price_per_scoop": 3.0, "tags": ["coffee"], "stock_scoops": 20, "popularity": 55},
+    {"id": "lemon_sorbet", "name": "Lemon Sorbet", "price_per_scoop": 2.5, "tags": ["fruity", "dairy-free", "vegan"], "stock_scoops": 25, "popularity": 50},
+    {"id": "cookie_monster", "name": "Cookie Monster", "price_per_scoop": 3.25, "tags": ["cookies", "chocolate", "fun"], "stock_scoops": 40, "popularity": 78},
+    {"id": "choco_chip", "name": "Chocolate Chip", "price_per_scoop": 2.75, "tags": ["chocolate", "classic", "crunchy"], "stock_scoops": 50, "popularity": 72},
+    {"id": "banana", "name": "Banana Cream", "price_per_scoop": 2.75, "tags": ["fruity", "classic"], "stock_scoops": 30, "popularity": 45},
+    {"id": "strawberry_sorbet", "name": "Strawberry Sorbet", "price_per_scoop": 2.75, "tags": ["fruity", "dairy-free", "vegan"], "stock_scoops": 30, "popularity": 55},
+    {"id": "mango_sorbet", "name": "Mango Sorbet", "price_per_scoop": 3.0, "tags": ["fruity", "dairy-free", "vegan"], "stock_scoops": 30, "popularity": 58}
+  ],
+  "containers": [
+    {"id": "cup", "name": "Cup", "price": 0.0},
+    {"id": "cone", "name": "Sugar Cone", "price": 0.5},
+    {"id": "waffle_cone", "name": "Waffle Cone", "price": 1.25},
+    {"id": "sundae", "name": "Sundae Bowl", "price": 1.5},
+    {"id": "milkshake", "name": "Milkshake (blended)", "price": 2.5}
+  ],
+  "toppings": [
+    {"id": "sprinkles", "name": "Rainbow Sprinkles", "price": 0.5},
+    {"id": "hot_fudge", "name": "Hot Fudge", "price": 1.0},
+    {"id": "nuts", "name": "Roasted Almonds", "price": 0.75},
+    {"id": "whipped_cream", "name": "Whipped Cream", "price": 0.5},
+    {"id": "cherry", "name": "Maraschino Cherry", "price": 0.25},
+    {"id": "banana_slices", "name": "Banana Slices", "price": 0.75},
+    {"id": "choco_chips", "name": "Choco Chips", "price": 0.5}
+  ],
+  "promos": [
+    {"code": "SUMMER10", "percent": 10},
+    {"code": "WELCOME15", "percent": 15}
+  ]
+}

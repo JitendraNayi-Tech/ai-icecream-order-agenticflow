@@ -1,0 +1,56 @@
+{
+  "customers": [
+    {"id": "parthiv", "name": "Parthiv", "loyalty_tier": "gold"},
+    {"id": "zarna", "name": "Zarna", "loyalty_tier": "silver"},
+    {"id": "dirgh", "name": "Dirgh", "loyalty_tier": "none"},
+    {"id": "pavani", "name": "Pavani", "loyalty_tier": "gold", "notes": "Dairy-free: only suggest dairy-free / vegan flavors."},
+    {"id": "jagrut", "name": "Jagrut", "loyalty_tier": "silver"},
+    {"id": "aryan", "name": "Aryan", "loyalty_tier": "none"}
+  ],
+  "orders": [
+    {"id": "ORD-1001", "customer_id": "parthiv", "status": "DELIVERED", "created_at": "2026-08-05T19:10:00",
+     "items": [{"line_id": 1, "flavors": ["cookies_cream"], "scoops": 2, "container": "waffle_cone", "toppings": [], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "Cookies & cream is the best!", "sentiment": "positive"}},
+    {"id": "ORD-1002", "customer_id": "parthiv", "status": "DELIVERED", "created_at": "2026-09-10T20:00:00",
+     "items": [{"line_id": 1, "flavors": ["cookies_cream"], "scoops": 1, "container": "cup", "toppings": ["hot_fudge"], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "", "sentiment": "positive"}},
+
+    {"id": "ORD-2001", "customer_id": "zarna", "status": "DELIVERED", "created_at": "2026-08-12T16:30:00",
+     "items": [{"line_id": 1, "flavors": ["chocolate", "vanilla"], "scoops": 2, "container": "cone", "toppings": [], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "Classic combo, perfect", "sentiment": "positive"}},
+    {"id": "ORD-2002", "customer_id": "zarna", "status": "DELIVERED", "created_at": "2026-09-15T18:00:00",
+     "items": [{"line_id": 1, "flavors": ["vanilla"], "scoops": 1, "container": "cup", "toppings": ["sprinkles"], "quantity": 2}],
+     "feedback": {"rating": 4, "comment": "", "sentiment": "positive"}},
+
+    {"id": "ORD-3001", "customer_id": "dirgh", "status": "DELIVERED", "created_at": "2026-08-20T15:00:00",
+     "items": [{"line_id": 1, "flavors": ["cookie_monster"], "scoops": 2, "container": "cup", "toppings": [], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "Cookie Monster forever", "sentiment": "positive"}},
+    {"id": "ORD-3002", "customer_id": "dirgh", "status": "DELIVERED", "created_at": "2026-09-18T17:45:00",
+     "items": [{"line_id": 1, "flavors": ["cookies_cream"], "scoops": 2, "container": "milkshake", "toppings": ["whipped_cream"], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "Cookies & cream milkshake was amazing", "sentiment": "positive"}},
+
+    {"id": "ORD-4001", "customer_id": "pavani", "status": "DELIVERED", "created_at": "2026-08-08T14:00:00",
+     "items": [{"line_id": 1, "flavors": ["strawberry_sorbet", "mango_sorbet"], "scoops": 2, "container": "cup", "toppings": [], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "Love that it's dairy-free", "sentiment": "positive"}},
+    {"id": "ORD-4002", "customer_id": "pavani", "status": "DELIVERED", "created_at": "2026-09-02T19:20:00",
+     "items": [{"line_id": 1, "flavors": ["strawberry"], "scoops": 1, "container": "cup", "toppings": [], "quantity": 1}],
+     "feedback": {"rating": 1, "comment": "Strawberry Fields has dairy, I can't have it", "sentiment": "negative"}},
+    {"id": "ORD-4003", "customer_id": "pavani", "status": "DELIVERED", "created_at": "2026-09-20T13:10:00",
+     "items": [{"line_id": 1, "flavors": ["mango_sorbet"], "scoops": 2, "container": "cone", "toppings": [], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "", "sentiment": "positive"}},
+
+    {"id": "ORD-5001", "customer_id": "jagrut", "status": "DELIVERED", "created_at": "2026-08-25T21:00:00",
+     "items": [{"line_id": 1, "flavors": ["chocolate", "cookies_cream"], "scoops": 2, "container": "waffle_cone", "toppings": [], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "Chocolate + cookies & cream = heaven", "sentiment": "positive"}},
+    {"id": "ORD-5002", "customer_id": "jagrut", "status": "DELIVERED", "created_at": "2026-09-22T20:15:00",
+     "items": [{"line_id": 1, "flavors": ["chocolate"], "scoops": 1, "container": "cup", "toppings": ["hot_fudge"], "quantity": 1}],
+     "feedback": {"rating": 4, "comment": "", "sentiment": "positive"}},
+
+    {"id": "ORD-6001", "customer_id": "aryan", "status": "DELIVERED", "created_at": "2026-09-01T16:00:00",
+     "items": [{"line_id": 1, "flavors": ["choco_chip", "banana"], "scoops": 2, "container": "sundae", "toppings": ["banana_slices", "hot_fudge", "whipped_cream"], "quantity": 1}],
+     "feedback": {"rating": 5, "comment": "Best banana sundae ever", "sentiment": "positive"}},
+    {"id": "ORD-6002", "customer_id": "aryan", "status": "DELIVERED", "created_at": "2026-09-24T18:30:00",
+     "items": [{"line_id": 1, "flavors": ["choco_chip"], "scoops": 1, "container": "cone", "toppings": ["choco_chips"], "quantity": 1}],
+     "feedback": {"rating": 4, "comment": "", "sentiment": "positive"}}
+  ]
+}
