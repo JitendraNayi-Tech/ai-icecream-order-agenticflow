@@ -35,6 +35,9 @@ Two ways to power the agents (see `.env.example`):
 📘 **New to agentic AI?** Read [learn.md](learn.md) for the architecture: patterns, models,
 context engineering, MCP, speed and quality trade-offs.
 
+💰 **AI cost per order:** [COST_TUNING.md](COST_TUNING.md) has before/after tables. Tuning took
+it from $0.111 to about $0.02 per order.
+
 Open http://localhost:8000 and pick a customer:
 - **Parthiv** (gold): cookies & cream
 - **Zarna** (silver): chocolate and vanilla

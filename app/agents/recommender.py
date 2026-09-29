@@ -5,6 +5,7 @@ import json
 from anthropic import beta_async_tool
 
 from app.agents.base import SHARED_RULES, AgentContext, AgentSpec, guarded
+from app.store import Store
 
 SYSTEM = SHARED_RULES + """
 You are the FLAVOR RECOMMENDER agent. Suggest 2-3 flavors (and optionally a container or
@@ -57,8 +58,9 @@ def context(ctx: AgentContext) -> str:
     cid = ctx.session.customer_id
     profile = {"loyalty_tier": ctx.store.customers[cid].loyalty_tier,
                **ctx.store.preferences(cid), "best_sellers": ctx.store.best_sellers()}
-    return ctx.store.menu_text() + "\n\nCUSTOMER TASTE PROFILE\n" + json.dumps(profile)
+    return "CUSTOMER TASTE PROFILE\n" + json.dumps(profile)
 
 
 AGENT = AgentSpec(name="recommender", label="Flavor Recommender", system=SYSTEM,
-                  effort="medium", make_tools=make_tools, context=context)
+                  effort="medium", make_tools=make_tools, static_context=Store.menu_text,
+                  context=context)

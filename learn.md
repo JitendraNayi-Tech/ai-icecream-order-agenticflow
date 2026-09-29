@@ -156,6 +156,34 @@ The next steps would be:
 
 ---
 
+## 7b. Cost per order (measured)
+
+The same scripted order was replayed each time: 2 cups × 2 scoops → checkout → "yes" →
+delivery → 5★. Costs are the API-equivalent figures Claude Code reports.
+
+| | Before tuning | After tuning |
+|---|---|---|
+| Claude runs per order | 8 | 3 (1 router + 2 intake) |
+| Cost per order | $0.111 | $0.026 (cold cache), **$0.019** (warm) |
+| 5,000 orders | $550 | ~$95–130 |
+
+The two changes:
+1. **Prompt layout for caching.** Rules and the menu (identical for everyone) sit in the system
+   prompt; customer, state and cart go after the conversation. The cached prefix is then read at
+   ~10% of the input price and **shared across customers**: the second customer's first call
+   read 2,740 cached tokens and wrote only 443 new ones.
+2. **Deterministic fast paths** (`app/fastpath.py`) for the greeting, price summary, order
+   placement, rating request and positive feedback. Claude handles only what needs language
+   understanding: free-text orders, suggestions, questions, complaints.
+
+Further levers not yet applied:
+- routing rules for obvious order phrases (skips the ~$0.003 router call),
+- Haiku for simple agents,
+- a trimmed menu format,
+- the API backend (no per-run CLI overhead call).
+
+---
+
 ## 8. Quality and reliability
 
 - **Deterministic guardrails in code:** stock checks, 1–3 scoops, promo validity, coupon cap (25%,

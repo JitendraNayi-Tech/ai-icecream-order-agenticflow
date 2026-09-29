@@ -6,7 +6,7 @@ import time
 
 import anthropic
 
-from app import claude_code, config, llm, routing
+from app import claude_code, config, fastpath, llm, routing
 from app.agents import AGENTS
 from app.agents.base import AgentContext
 from app.agents.tracker import OrderTracker, eta_minutes, status_line
@@ -44,13 +44,12 @@ class Orchestrator:
     # ---------- entry points ----------
 
     async def greet(self, session: Session) -> None:
-        """First connection: the recommender opens the chat with personalised suggestions."""
+        """First connection: a personalised greeting built from the taste profile (no LLM)."""
         async with session.lock:
             if session.greeted:
                 return
             session.greeted = True
-            session.add_message("user", "[The customer just opened the chat. Greet them.]")
-            await self._run_agent(session, "recommender")
+            await self._say_fast(session, "recommender", fastpath.greeting(self._ctx(session)))
 
     async def handle(self, session: Session, text: str) -> None:
         session.pending.append(text)
@@ -67,7 +66,11 @@ class Orchestrator:
                     merged = "\n".join(texts)
                     session.add_message("user", merged)
                     agent = await self.pick_agent(session, merged)
-                    await self._run_agent(session, agent)
+                    reply = fastpath.try_handle(agent, self._ctx(session), merged)
+                    if reply is not None:
+                        await self._say_fast(session, agent, reply)
+                    else:
+                        await self._run_agent(session, agent)
         finally:
             session.draining = False
 
@@ -86,18 +89,43 @@ class Orchestrator:
 
     # ---------- internals ----------
 
+    def _ctx(self, session: Session) -> AgentContext:
+        return AgentContext(store=self.store, session=session, services=self)
+
+    async def _say_fast(self, session: Session, agent: str, text: str) -> None:
+        """Send a deterministic (no-LLM) reply on behalf of an agent."""
+        log.info("agent %s replied via fast path (no LLM)", agent)
+        session.last_agent = agent
+        await session.say(AGENTS[agent].label, text)
+        await session.emit({"type": "cart", "items": session.cart_view(self.store)})
+
+    def build_prompt(self, session: Session, name: str) -> tuple[str, str]:
+        """Return (system, volatile) for one agent run, laid out for prompt caching.
+
+        `system` holds only content that is identical for every customer and every turn
+        (agent rules + menu), so its cached prefix is reused across messages and customers.
+        Everything that changes (customer, notes, session state, cart) goes in `volatile`,
+        which the backends send after the conversation.
+        """
+        spec = AGENTS[name]
+        system = spec.system
+        if spec.static_context:
+            system += "\n\n" + spec.static_context(self.store)
+        customer = self.store.customers[session.customer_id]
+        volatile = (f"Customer: {customer.name} (id {customer.id}, loyalty "
+                    f"{customer.loyalty_tier}).\nSession state:\n{self._state(session)}")
+        if customer.notes:
+            volatile += f"\nIMPORTANT customer notes: {customer.notes}"
+        if spec.context:
+            ctx = AgentContext(store=self.store, session=session, services=self)
+            volatile += "\n\n" + spec.context(ctx)
+        return system, volatile
+
     async def _run_agent(self, session: Session, name: str, event: str | None = None) -> None:
         spec = AGENTS[name]
         await session.emit({"type": "typing", "agent": spec.label})
         ctx = AgentContext(store=self.store, session=session, services=self)
-        customer = self.store.customers[session.customer_id]
-        system = (spec.system + f"\nCustomer: {customer.name} (id {customer.id}, "
-                  f"loyalty {customer.loyalty_tier}).\nSession state:\n{self._state(session)}")
-        if customer.notes:
-            system += f"\nIMPORTANT customer notes: {customer.notes}"
-        if spec.context:
-            # Pre-loaded data (menu, cart, ...) saves the agent a tool round-trip per turn.
-            system += "\n\n" + spec.context(ctx)
+        system, volatile = self.build_prompt(session, name)
         messages = list(session.history)
         started = time.monotonic()
         if event:
@@ -105,7 +133,8 @@ class Orchestrator:
             messages.append({"role": "user", "content": event})
         try:
             text = await llm.run_agent(system, spec.make_tools(ctx), messages, spec.effort,
-                                       agent=name, customer_id=session.customer_id)
+                                       agent=name, customer_id=session.customer_id,
+                                       volatile=volatile)
         except anthropic.RateLimitError:
             text = "We're a bit busy right now. Please try again in a moment."
         except anthropic.APIConnectionError:
@@ -152,9 +181,7 @@ class Orchestrator:
 
     async def _start_followup(self, session: Session, order: Order) -> None:
         async with session.lock:
-            await self._run_agent(
-                session, "followup",
-                event=f"[Event: order {order.id} was just delivered. Start the follow-up.]")
+            await self._say_fast(session, "followup", fastpath.feedback_request(self._ctx(session)))
 
     def _state(self, session: Session) -> str:
         active = self.store.orders.get(session.active_order_id or "")

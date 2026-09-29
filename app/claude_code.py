@@ -79,7 +79,7 @@ def render_transcript(messages: list[dict]) -> str:
 
 
 async def run_agent(system: str, messages: list[dict], effort: str, *, agent: str,
-                    customer_id: str) -> str:
+                    customer_id: str, volatile: str = "") -> str:
     mcp = {"mcpServers": {"shop": {
         "type": "http", "url": f"{config.APP_URL}/mcp/{customer_id}/{agent}"}}}
     args = [
@@ -90,7 +90,10 @@ async def run_agent(system: str, messages: list[dict], effort: str, *, agent: st
         "--strict-mcp-config", "--mcp-config", json.dumps(mcp),
         "--allowedTools", "mcp__shop",
     ]
+    # --system-prompt stays identical across turns and customers (the CLI caches it);
+    # the per-turn details ride in the prompt, after the conversation.
     prompt = (f"Conversation so far:\n\n{render_transcript(messages)}\n\n"
+              f"Current details:\n{volatile}\n\n"
               "Write the shop's next chat message to the customer (use your tools as needed). "
               "Output only the message text.")
     data = await asyncio.to_thread(_run, args, prompt)

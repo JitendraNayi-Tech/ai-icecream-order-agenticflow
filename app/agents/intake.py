@@ -5,6 +5,7 @@ import json
 from anthropic import beta_async_tool
 
 from app.agents.base import SHARED_RULES, AgentContext, AgentSpec, guarded
+from app.store import Store
 
 SYSTEM = SHARED_RULES + """
 You are the ORDER INTAKE agent. Turn what the customer says into cart items.
@@ -91,9 +92,8 @@ def make_tools(ctx: AgentContext) -> list:
 
 
 def context(ctx: AgentContext) -> str:
-    return (ctx.store.menu_text() + "\n\nCURRENT CART\n"
-            + json.dumps(ctx.session.cart_view(ctx.store) or "empty"))
+    return "CURRENT CART\n" + json.dumps(ctx.session.cart_view(ctx.store) or "empty")
 
 
 AGENT = AgentSpec(name="intake", label="Order Intake", system=SYSTEM, effort="medium",
-                  make_tools=make_tools, context=context)
+                  make_tools=make_tools, static_context=Store.menu_text, context=context)

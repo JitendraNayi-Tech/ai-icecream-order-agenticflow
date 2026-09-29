@@ -74,12 +74,64 @@ async def test_messages_sent_while_busy_are_merged_into_one_turn(calls, monkeypa
     assert s.turn == 2 and not s.pending and not s.draining
 
 
-async def test_greet_runs_once(calls):
+async def test_greet_runs_once_without_llm(calls):
     orch = Orchestrator(Store(), FAST)
     s = orch.session("dirgh")
     await orch.greet(s)
     await orch.greet(s)
-    assert len(calls["runs"]) == 1 and s.history[0]["role"] == "user"
+    assert calls["runs"] == []  # templated greeting, no Claude call
+    assert len(s.history) == 1 and "Cookie Monster" in s.history[0]["content"]
+
+
+def test_system_prompt_is_identical_across_customers_and_turns():
+    """The cached prefix must not contain anything customer- or turn-specific."""
+    store = Store()
+    orch = Orchestrator(store, FAST)
+    a, b = orch.session("parthiv"), orch.session("pavani")
+    sys_a1, vol_a1 = orch.build_prompt(a, "intake")
+    a.add_to_cart(store, flavors=["vanilla"], scoops=1, container="cup")
+    a.turn, a.quoted_turn = 3, 2
+    sys_a2, vol_a2 = orch.build_prompt(a, "intake")
+    sys_b, vol_b = orch.build_prompt(b, "intake")
+    assert sys_a1 == sys_a2 == sys_b
+    assert "Madagascar Vanilla" in sys_a1  # the menu is part of the cached prefix
+    assert "Parthiv" not in sys_a1 and "Parthiv" in vol_a1
+    assert vol_a1 != vol_a2  # cart/state changes only touch the volatile part
+    assert "dairy-free" in vol_b.lower()
+
+
+async def test_checkout_and_confirmation_use_no_llm(calls):
+    store = Store()
+    orch = Orchestrator(store, FAST)
+    s = orch.session("parthiv")
+    s.add_to_cart(store, flavors=["cookies_cream"], scoops=2, container="cup", quantity=2)
+    await orch.handle(s, "checkout with SUMMER10")
+    assert "Total: $9.60" in s.history[-1]["content"]  # $12.00 - (10% gold + 10% promo)
+    await orch.handle(s, "yes")
+    assert "Your order is placed" in s.history[-1]["content"]
+    assert calls["runs"] == [] and s.active_order_id
+    orch.stop_tracking(s.active_order_id)
+
+
+async def test_checkout_with_a_question_still_goes_to_the_agent(calls):
+    store = Store()
+    orch = Orchestrator(store, FAST)
+    s = orch.session("parthiv")
+    s.add_to_cart(store, flavors=["vanilla"], scoops=1, container="cup")
+    await orch.handle(s, "can I pay by card at checkout?")
+    assert len(calls["runs"]) == 1 and "CHECKOUT" in calls["runs"][0]["system"]
+
+
+async def test_good_rating_recorded_without_llm_bad_rating_goes_to_agent(calls):
+    store = Store()
+    orch = Orchestrator(store, FAST)
+    s = orch.session("zarna")
+    s.feedback_order_id = "ORD-2002"
+    await orch.handle(s, "5 stars, loved it!")
+    assert store.orders["ORD-2002"].feedback.rating == 5 and calls["runs"] == []
+    s.feedback_order_id = "ORD-2001"
+    await orch.handle(s, "2 stars, it had melted")
+    assert len(calls["runs"]) == 1 and "FOLLOW-UP" in calls["runs"][0]["system"]
 
 
 async def test_place_order_requires_confirmation_on_later_turn(calls):
@@ -117,8 +169,5 @@ async def test_delivery_pushes_updates_and_starts_followup(calls):
                                             OrderStatus.READY, OrderStatus.OUT_FOR_DELIVERY,
                                             OrderStatus.DELIVERED)]
     assert s.feedback_order_id == order_id and s.active_order_id is None
-    followup = calls["runs"][-1]
-    assert "FOLLOW-UP" in followup["system"]
-    assert "was just delivered" in followup["messages"][-1]["content"]
-    # the event prompt is not persisted in the shared history
-    assert all("was just delivered" not in m["content"] for m in s.history)
+    # the follow-up opens with a templated rating request, no Claude call
+    assert "rate it 1-5" in s.history[-1]["content"] and calls["runs"] == []

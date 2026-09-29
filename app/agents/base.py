@@ -30,8 +30,13 @@ class AgentSpec:
     system: str
     effort: str  # output_config.effort
     make_tools: Callable[[AgentContext], list]
-    # Optional data appended to the system prompt each turn (menu, cart, ...), so the agent
-    # doesn't spend a tool round-trip fetching it. Tools stay available for fresh reads.
+    # Pre-loaded data, so the agent doesn't spend a tool round-trip fetching it. Split for
+    # prompt caching:
+    # - static_context: identical for every customer and turn (the menu). Goes into the
+    #   system prompt, whose cached prefix is then reused across messages and customers.
+    # - context: per-customer / per-turn data (cart, taste profile). Sent after the
+    #   conversation, so changing it never invalidates the cached prefix.
+    static_context: Callable[[Store], str] | None = None
     context: Callable[[AgentContext], str] | None = None
 
 

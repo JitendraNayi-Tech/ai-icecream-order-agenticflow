@@ -36,18 +36,31 @@ def _final_text(message) -> str:
 
 
 async def run_agent(system: str, tools: list, messages: list[dict], effort: str, *,
-                    agent: str, customer_id: str) -> str:
-    """Run one agent turn: Claude may call tools repeatedly; returns the final reply text."""
+                    agent: str, customer_id: str, volatile: str = "") -> str:
+    """Run one agent turn: Claude may call tools repeatedly; returns the final reply text.
+
+    `system` must be identical across customers and turns (it is the cached prefix);
+    per-turn data goes in `volatile`, which is sent after the conversation.
+    """
     if config.LLM_BACKEND == "claude_code":
         # Tools are reached through the app's /mcp endpoint instead of being passed in.
         return await claude_code.run_agent(system, messages, effort, agent=agent,
-                                           customer_id=customer_id)
+                                           customer_id=customer_id, volatile=volatile)
+    messages = list(messages)  # the runner appends tool turns; keep shared history text-only
+    if messages and messages[0]["role"] == "assistant":
+        # The chat can open with a templated greeting; the API wants a user turn first.
+        messages.insert(0, {"role": "user", "content": "[Customer opened the chat]"})
+    if volatile:
+        # Mid-conversation system message: operator context after the latest user turn,
+        # without touching the cached system prompt.
+        messages.append({"role": "system", "content": volatile})
     runner = client().beta.messages.tool_runner(
         model=config.MODEL,
         max_tokens=config.MAX_TOKENS,
-        system=system,
+        # Explicit cache breakpoint: tools + this fixed system prompt are cached and reused.
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
         tools=tools,
-        messages=list(messages),  # the runner appends tool turns; keep shared history text-only
+        messages=messages,
         thinking={"type": "adaptive"},
         output_config={"effort": effort},
         betas=[FALLBACK_BETA],
